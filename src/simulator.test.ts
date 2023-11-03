@@ -544,4 +544,93 @@ describe("Minivac class", () => {
       },
     );
   });
+
+  test("a relay controls itself, pdf p. 19", () => {
+    const m = new MinivacSimulator(`
+      1F/1-
+      1C/1X
+      1Y/2Y
+      2Y/2+
+      2Z/1L
+      1K/1C
+    `);
+    // no buttons pressed, light stay off
+    expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+      changedRelays: [],
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+    // button 1 is pressed on, relay light 1 and coil 1 turn on
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [0],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: [true, ...new Array(5).fill(false)],
+        relayStates: [true, ...new Array(5).fill(false)],
+      },
+    );
+    // another simulation step, nothing changes
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: [true, ...new Array(5).fill(false)],
+        relayStates: [true, ...new Array(5).fill(false)],
+      },
+    );
+    // ******* CRITICAL STEP ********
+    // button turns off, relay light 1 and coil 1 STAY ON
+    expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+      changedRelays: [],
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: [true, ...new Array(5).fill(false)],
+      relayStates: [true, ...new Array(5).fill(false)],
+    });
+    // simulate again 5 times, nothing changes
+    for (let i = 0; i < 5; i++) {
+      expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+        changedRelays: [],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: [true, ...new Array(5).fill(false)],
+        relayStates: [true, ...new Array(5).fill(false)],
+      });
+    }
+    // press button 2, relay light 1 and coil 1 turn off
+    expect(
+      m.simulationStep([false, true, ...new Array(4).fill(false)]),
+    ).toStrictEqual({
+      changedRelays: [0],
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+    // simulate again 5 times, nothing changes
+    for (let i = 0; i < 5; i++) {
+      expect(
+        m.simulationStep([false, true, ...new Array(4).fill(false)]),
+      ).toStrictEqual({
+        changedRelays: [],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: new Array(6).fill(false),
+        relayStates: new Array(6).fill(false),
+      });
+    }
+    // let go of light 2, everything stays off
+    expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+      changedRelays: [],
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+    // simulate 5 more times, nothing changes
+    for (let i = 0; i < 5; i++) {
+      expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+        changedRelays: [],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: new Array(6).fill(false),
+        relayStates: new Array(6).fill(false),
+      });
+    }
+  });
 });
