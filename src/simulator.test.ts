@@ -571,14 +571,16 @@ describe("Minivac class", () => {
       },
     );
     // another simulation step, nothing changes
-    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
-      {
+    for (let i = 0; i < 5; i++) {
+      expect(
+        m.simulationStep([true, ...new Array(5).fill(false)]),
+      ).toStrictEqual({
         changedRelays: [],
         outputLightStates: new Array(6).fill(false),
         relayLightStates: [true, ...new Array(5).fill(false)],
         relayStates: [true, ...new Array(5).fill(false)],
-      },
-    );
+      });
+    }
     // ******* CRITICAL STEP ********
     // button turns off, relay light 1 and coil 1 STAY ON
     expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
@@ -596,6 +598,7 @@ describe("Minivac class", () => {
         relayStates: [true, ...new Array(5).fill(false)],
       });
     }
+    // (kinda as critical but less exciting cause it already worked above...)
     // press button 2, relay light 1 and coil 1 turn off
     expect(
       m.simulationStep([false, true, ...new Array(4).fill(false)]),
