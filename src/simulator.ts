@@ -1,11 +1,18 @@
 import type {
   AdjacencyList,
   Potentials,
-  LightState,
-  RelayState,
+  LightStates,
+  RelayStates,
   NodeName,
-  PushbuttonState,
+  PushbuttonStates,
 } from "./simulator.t";
+
+const LOGGING = false;
+function log(...args: any[]) {
+  if (LOGGING) {
+    console.log(...args);
+  }
+}
 
 export function unDigitifyPolarityNodes(nodeName: NodeName): string {
   return nodeName.replace(/\d([\+\-])/, "$1");
@@ -33,34 +40,6 @@ export function programToAdjacencyList(program: string): AdjacencyList {
       adjacencyList[from].add(to);
       adjacencyList[to].add(from);
     });
-
-  // special adjustment:
-  // if (digit)C and (samedigit)F nodes connections are present
-  // but no (samedigit)E node is present, remove the CF connections
-  // from the list and transform them into CE + EF connections so that
-  // further code doesn't have to deal with weird exceptions around this
-
-  for (let relayIdx = 0; relayIdx <= 6; relayIdx++) {
-    let c = adjacencyList[`${relayIdx}C`];
-    let f = adjacencyList[`${relayIdx}F`];
-    if (c && f && !adjacencyList[`${relayIdx}E`]) {
-      // remove the symmetric CF connections
-
-      c.delete(`${relayIdx}F`);
-      f.delete(`${relayIdx}C`);
-
-      // add symmetric CE and EF to the connections (which potentially don't exist)
-      adjacencyList[`${relayIdx}C`].add(`${relayIdx}E`);
-      // add to E, creating it if doesn't exist
-      if (!adjacencyList[`${relayIdx}E`]) {
-        adjacencyList[`${relayIdx}E`] = new Set();
-      }
-      adjacencyList[`${relayIdx}E`].add(`${relayIdx}C`);
-      adjacencyList[`${relayIdx}E`].add(`${relayIdx}F`);
-      // add to F (which must exist because we found CF)
-      adjacencyList[`${relayIdx}F`].add(`${relayIdx}E`);
-    }
-  }
 
   return adjacencyList;
 }
@@ -92,21 +71,33 @@ export function getResistorAdjacencyList(
     // (C) light (E) coil (F) possibilities:
     // - only C E
     // - only E F
-    // - only C F (we assume that this was already converted to C E + E F,
-    // covered by the two cases above)
+    // - only C F (specially handled above to add CE and EF)
     // - C E F (will be added by CE and EF cases as well)
-    if (nodes.has(`${relayIdx}C`) && nodes.has(`${relayIdx}E`)) {
+    if (
+      nodes.has(`${relayIdx}C`) &&
+      nodes.has(`${relayIdx}F`) &&
+      !nodes.has(`${relayIdx}E`)
+    ) {
       resistorAdjacencyList[`${relayIdx}C`] = new Set([`${relayIdx}E`]);
-      resistorAdjacencyList[`${relayIdx}E`] = new Set([`${relayIdx}C`]);
-    }
-    if (nodes.has(`${relayIdx}E`) && nodes.has(`${relayIdx}F`)) {
-      // E potentially already exists as a set since we just handled CE
-      // and might have created it
-      if (!resistorAdjacencyList[`${relayIdx}E`]) {
-        resistorAdjacencyList[`${relayIdx}E`] = new Set();
-      }
-      resistorAdjacencyList[`${relayIdx}E`].add(`${relayIdx}F`);
+      resistorAdjacencyList[`${relayIdx}E`] = new Set([
+        `${relayIdx}C`,
+        `${relayIdx}F`,
+      ]);
       resistorAdjacencyList[`${relayIdx}F`] = new Set([`${relayIdx}E`]);
+    } else {
+      if (nodes.has(`${relayIdx}C`) && nodes.has(`${relayIdx}E`)) {
+        resistorAdjacencyList[`${relayIdx}C`] = new Set([`${relayIdx}E`]);
+        resistorAdjacencyList[`${relayIdx}E`] = new Set([`${relayIdx}C`]);
+      }
+      if (nodes.has(`${relayIdx}E`) && nodes.has(`${relayIdx}F`)) {
+        // E potentially already exists as a set since we just handled CE
+        // and might have created it
+        if (!resistorAdjacencyList[`${relayIdx}E`]) {
+          resistorAdjacencyList[`${relayIdx}E`] = new Set();
+        }
+        resistorAdjacencyList[`${relayIdx}E`].add(`${relayIdx}F`);
+        resistorAdjacencyList[`${relayIdx}F`] = new Set([`${relayIdx}E`]);
+      }
     }
   }
 
@@ -124,18 +115,18 @@ export function getButtonSwitchRelayAdjacencyList({
   buttonStates,
   relayStates,
 }: {
-  buttonStates: PushbuttonState;
+  buttonStates: PushbuttonStates;
   // TODO switchStates: boolean[],
-  relayStates: RelayState;
+  relayStates: RelayStates;
 }): AdjacencyList {
   let switchAdjacencyList: AdjacencyList = {};
   for (let relayIdx = 1; relayIdx <= 6; relayIdx++) {
     // buttons
-    if (buttonStates[relayIdx] === true) {
+    if (buttonStates[relayIdx - 1] === true) {
       // connect the 'normally open' X Y nodes
       switchAdjacencyList[`${relayIdx}X`] = new Set([`${relayIdx}Y`]);
       switchAdjacencyList[`${relayIdx}Y`] = new Set([`${relayIdx}X`]);
-    } else if (buttonStates[relayIdx] === false) {
+    } else if (buttonStates[relayIdx - 1] === false) {
       // connect the 'normally closed' Y Z nodes
       switchAdjacencyList[`${relayIdx}Y`] = new Set([`${relayIdx}Z`]);
       switchAdjacencyList[`${relayIdx}Z`] = new Set([`${relayIdx}Y`]);
@@ -148,12 +139,12 @@ export function getButtonSwitchRelayAdjacencyList({
     // nodes i.e. if circuit uses only H J nodes or H J G but not
     // K / L / N nodes, the L-K and/or L-N connections will still be generated
     // this should not matter.
-    if (relayStates[relayIdx] === true) {
+    if (relayStates[relayIdx - 1] === true) {
       switchAdjacencyList[`${relayIdx}G`] = new Set([`${relayIdx}H`]);
       switchAdjacencyList[`${relayIdx}H`] = new Set([`${relayIdx}G`]);
       switchAdjacencyList[`${relayIdx}K`] = new Set([`${relayIdx}L`]);
       switchAdjacencyList[`${relayIdx}L`] = new Set([`${relayIdx}K`]);
-    } else if (relayStates[relayIdx] === false) {
+    } else if (relayStates[relayIdx - 1] === false) {
       switchAdjacencyList[`${relayIdx}H`] = new Set([`${relayIdx}J`]);
       switchAdjacencyList[`${relayIdx}J`] = new Set([`${relayIdx}H`]);
       switchAdjacencyList[`${relayIdx}L`] = new Set([`${relayIdx}N`]);
@@ -185,10 +176,20 @@ export function mergeAdjancencyLists(
 }
 
 // TODO test
+// TODO test
+// TODO test
 function findConnectedComponent(
   node: string,
-  adjacencyList: AdjacencyList,
+  adjacencyLists: AdjacencyList[],
 ): string[] {
+  let merged = mergeAdjancencyLists(adjacencyLists);
+  // if you are at 1E for example 'between' 1C and 1F,
+  // you are not ""connected to anything"" i.e. there are no other
+  // components with the same potential.
+  if (!merged[node]) {
+    return [node];
+  }
+
   let connectedComponent: string[] = [];
   let unexploredNodes = [node];
   while (unexploredNodes.length > 0) {
@@ -197,7 +198,7 @@ function findConnectedComponent(
       continue;
     }
     connectedComponent.push(node);
-    unexploredNodes.push(...adjacencyList[node]);
+    unexploredNodes.push(...merged[node]);
   }
   return connectedComponent;
 }
@@ -281,6 +282,7 @@ export function getResistanceMirrorNodes(
 // the adjacency lists
 // and TODO the input (pushbutton) and current-relay state TODO
 // and returns the 'new' potentials aka does a 'round' of simulation
+// roblgorithm by @robsimmons
 export function roblgorithm({
   programAdjacencyList,
   resistorAdjacencyList,
@@ -290,11 +292,6 @@ export function roblgorithm({
   resistorAdjacencyList: AdjacencyList;
   switchAdjacencyList: AdjacencyList;
 }): Potentials {
-  console.log("input programAdjacencyList", programAdjacencyList);
-  console.log("input resistorAdjacencyList", resistorAdjacencyList);
-  console.log("input switchAdjacencyList", switchAdjacencyList);
-
-  // roblgorithm by @robsimmons
   /*
     set initial potential to 0
     set initial list of unexplored points to node -
@@ -314,46 +311,29 @@ export function roblgorithm({
   let visitedNodes = new Set<string>();
   let potentials: Record<string, number> = {};
   while (unexploredNodes.size > 0) {
-    if (iteration++ > 50) {
+    if (iteration++ > 100) {
       throw new Error("too many iterations");
     }
-
-    console.log("unexploredNodes", unexploredNodes);
 
     // get any node from the set and delete it from the set
     let node = unexploredNodes.values().next().value;
     unexploredNodes.delete(node);
 
-    console.log("node", node);
-    console.log("visitedNodes", visitedNodes);
-
     // if we've already visited this node, skip it
     if (visitedNodes.has(node)) {
-      console.log("skipping", node);
       continue;
     }
     visitedNodes.add(node);
 
     // set potential at node
     potentials[node] = Math.max(potentials[node] || 0, potential);
-    console.log("set potential of node to", potentials[node]);
 
-    let connectedComponent = findConnectedComponent(
-      node,
-      mergeAdjancencyLists([programAdjacencyList, switchAdjacencyList]),
-    );
-
-    console.log("connectedComponent", connectedComponent);
+    let connectedComponent = findConnectedComponent(node, [
+      programAdjacencyList,
+      switchAdjacencyList,
+    ]);
 
     connectedComponent.forEach((connectedNode) => {
-      console.log(
-        "setting potential of",
-        connectedNode,
-        "to",
-        Math.max(potentials[connectedNode] || 0, potential),
-        "current value",
-        potentials[connectedNode],
-      );
       potentials[connectedNode] = Math.max(
         potentials[connectedNode] || 0,
         potential,
@@ -373,24 +353,16 @@ export function roblgorithm({
       Object.keys(resistorAdjacencyList).includes(node),
     );
 
-    console.log("resistors", resistors);
-
     resistors.forEach((resistor) => {
       // find the other side(S) of the resistor
 
-      console.log("resistor", resistor);
-
       getResistanceMirrorNodes(resistor, resistorAdjacencyList).forEach(
         (otherSide) => {
-          console.log("otherSide", otherSide);
-          console.log("potentials[otherSide]", potentials[otherSide]);
           // does other side already have a potential? if so, ignore (I think)
           if (potentials[otherSide] !== undefined) {
             return;
           }
 
-          // ABSOLUTELY CHECK
-          // GRAPH SEARCH:
           // can otherSide get to a '+'? if not, ignore it
           let canGetToPlus = canResistorOtherSideReachPlus(
             resistor,
@@ -398,14 +370,12 @@ export function roblgorithm({
             [programAdjacencyList, resistorAdjacencyList, switchAdjacencyList],
           );
 
-          console.log("canGetToPlus", canGetToPlus);
           if (!canGetToPlus) {
             return;
           }
 
           // set the potential of the other side to the max
           // of the potential there if it's set, or otherwise potential+1
-          console.log("setting potential of", otherSide, "to", potential + 1);
           potentials[otherSide] = Math.max(
             potentials[otherSide] || 0,
             potential + 1,
@@ -417,26 +387,28 @@ export function roblgorithm({
 
     potential++;
   }
-  console.log("potentials", potentials);
   return potentials;
 }
 
 export function computeOutputStateFromPotentials(potentials: Potentials): {
-  outputLightState: LightState;
-  relayLightState: LightState;
-  relayState: RelayState;
+  outputLightStates: LightStates;
+  relayLightStates: LightStates;
+  relayStates: RelayStates;
 } {
   // find all resistor nodes in the potentials list
   // if potential across them is different, set the corresponding output state
-  // a potential across A-B is a light, a potential across C E is the relay light,
-  // a potential across E F is a relay, a potential across C F is the relay light and the relay
+  // a potential across A-B is a light
+  // a potential across C E is the relay light,
+  // a potential across E F is a relay.
+  // (we pre-process the program graph to always generate CE + EF connections
+  // when only given CF)
 
   // enabled when potential across A B
-  let outputLightState: LightState = new Array(6).fill(false);
+  let outputLightStates: LightStates = new Array(6).fill(false);
   // enabled when potential across C E or C F
-  let relayLightState: LightState = new Array(6).fill(false);
+  let relayLightStates: LightStates = new Array(6).fill(false);
   // enabled when potential across E F or C F
-  let relayState: RelayState = new Array(6).fill(false);
+  let relayStates: RelayStates = new Array(6).fill(false);
 
   for (let relayIdx = 1; relayIdx <= 6; relayIdx++) {
     let a = potentials[`${relayIdx}A`];
@@ -447,29 +419,23 @@ export function computeOutputStateFromPotentials(potentials: Potentials): {
 
     // if potential across A B is different, set the corresponding output state
     if (a !== undefined && b !== undefined && a !== b) {
-      outputLightState[relayIdx - 1] = true;
+      outputLightStates[relayIdx - 1] = true;
     }
 
     // if potential across C E is different, set the corresponding relay light state
     if (c !== undefined && e !== undefined && c !== e) {
-      relayLightState[relayIdx - 1] = true;
+      relayLightStates[relayIdx - 1] = true;
     }
 
     // if potential across E F is different, set the corresponding relay state
     if (e !== undefined && f !== undefined && e !== f) {
-      relayState[relayIdx - 1] = true;
-    }
-
-    // if potential across C F is different, set the corresponding relay light and relay state
-    if (c !== undefined && f !== undefined && c !== f) {
-      relayLightState[relayIdx - 1] = true;
-      relayState[relayIdx - 1] = true;
+      relayStates[relayIdx - 1] = true;
     }
   }
 
   return {
-    outputLightState,
-    relayLightState,
-    relayState,
+    outputLightStates,
+    relayLightStates,
+    relayStates,
   };
 }

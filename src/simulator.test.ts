@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, describe } from "vitest";
 import {
   unDigitifyPolarityNodes,
   programToAdjacencyList,
@@ -9,6 +9,7 @@ import {
   computeOutputStateFromPotentials,
 } from "./simulator";
 import type { AdjacencyList } from "./simulator.t";
+import { MinivacSimulator } from "./minivac";
 
 test("unDigitifyPolarityNodes", () => {
   expect(unDigitifyPolarityNodes("1+")).toBe("+");
@@ -18,71 +19,76 @@ test("unDigitifyPolarityNodes", () => {
   expect(unDigitifyPolarityNodes("2X")).toBe("2X");
 });
 
-test("programToAdjacencyList", () => {
-  let out = programToAdjacencyList(`
-    1+/1A
-    1B/1-
-  `);
-  expect(out).toStrictEqual({
-    "+": new Set(["1A"]),
-    "1A": new Set(["+"]),
-    "1B": new Set(["-"]),
-    "-": new Set(["1B"]),
-  });
-
-  out = programToAdjacencyList(`
-    1+/1Y
-    1X/1A
-    1B/1-
-    1Y/2Y
-    2X/1X
-  `);
-  expect(out).toStrictEqual({
-    "+": new Set(["1Y"]),
-    "1Y": new Set(["+", "2Y"]),
-    "1X": new Set(["1A", "2X"]),
-    "1A": new Set(["1X"]),
-    "1B": new Set(["-"]),
-    "-": new Set(["1B"]),
-    "2Y": new Set(["1Y"]),
-    "2X": new Set(["1X"]),
-  });
-
-  // test case of programToAdjacencyList receiving C E and see that
-  // C E is there, test E F, test that it's there, then test C F
-  // and check and C E and E F are there
-  out = programToAdjacencyList(`
-    1+/1C
-    1E/1-
+describe("programToAdjacencyList", () => {
+  test("single light", () => {
+    let out = programToAdjacencyList(`
+      1+/1A
+      1B/1-
     `);
-  expect(out).toStrictEqual({
-    "+": new Set(["1C"]),
-    "1C": new Set(["+"]),
-    "1E": new Set(["-"]),
-    "-": new Set(["1E"]),
+    expect(out).toStrictEqual({
+      "+": new Set(["1A"]),
+      "1A": new Set(["+"]),
+      "1B": new Set(["-"]),
+      "-": new Set(["1B"]),
+    });
+
+    out = programToAdjacencyList(`
+      1+/1Y
+      1X/1A
+      1B/1-
+      1Y/2Y
+      2X/1X
+    `);
+    expect(out).toStrictEqual({
+      "+": new Set(["1Y"]),
+      "1Y": new Set(["+", "2Y"]),
+      "1X": new Set(["1A", "2X"]),
+      "1A": new Set(["1X"]),
+      "1B": new Set(["-"]),
+      "-": new Set(["1B"]),
+      "2Y": new Set(["1Y"]),
+      "2X": new Set(["1X"]),
+    });
   });
 
-  out = programToAdjacencyList(`
-    1+/1E
-    1F/1-
-  `);
-  expect(out).toStrictEqual({
-    "+": new Set(["1E"]),
-    "1E": new Set(["+"]),
-    "1F": new Set(["-"]),
-    "-": new Set(["1F"]),
-  });
+  test("C E, E F, C E F", () => {
+    let out = programToAdjacencyList(`
+      1+/1C
+      1E/1-
+      `);
+    expect(out).toStrictEqual({
+      "+": new Set(["1C"]),
+      "1C": new Set(["+"]),
+      "1E": new Set(["-"]),
+      "-": new Set(["1E"]),
+    });
 
-  out = programToAdjacencyList(`
-    1+/1C
-    1F/1-
-  `);
-  expect(out).toStrictEqual({
-    "+": new Set(["1C"]),
-    "1C": new Set(["+", "1E"]),
-    "1E": new Set(["1C", "1F"]),
-    "1F": new Set(["1E", "-"]),
-    "-": new Set(["1F"]),
+    out = programToAdjacencyList(`
+      1+/1E
+      1F/1-
+    `);
+    expect(out).toStrictEqual({
+      "+": new Set(["1E"]),
+      "1E": new Set(["+"]),
+      "1F": new Set(["-"]),
+      "-": new Set(["1F"]),
+    });
+
+    // test case of programToAdjacencyList receiving C E and see that
+    // C E is there, test E F, test that it's there, then test C F
+    // and check that it's unchanged....!!!! we should NOT
+    // break up C F in the program adjacency list... we should break
+    // them up in the getResistorAdjacencyList!!!!
+    out = programToAdjacencyList(`
+      1+/1C
+      1F/1-
+    `);
+    expect(out).toStrictEqual({
+      "+": new Set(["1C"]),
+      "1C": new Set(["+"]),
+      "1F": new Set(["-"]),
+      "-": new Set(["1F"]),
+    });
   });
 });
 
@@ -136,16 +142,16 @@ test("getResistorAdjacencyList", () => {
   });
 
   // relay light+coil
+  const out = getResistorAdjacencyList({
+    "+": new Set(["1C"]),
+    "1C": new Set(["+"]),
+    "1F": new Set(["-"]),
+    "-": new Set(["1F"]),
+  });
   expect(
-    getResistorAdjacencyList({
-      "+": new Set(["1C"]),
-      // programToAdjacencyList always redo's
-      // CF conections to be CE + EF
-      "1C": new Set(["+", "1E"]),
-      "1E": new Set(["1C", "1F"]),
-      "1F": new Set(["1E", "-"]),
-      "-": new Set(["1F"]),
-    }),
+    // test that getResistorAdjacencyList
+    // breaks up CF into C E and E F resistors!!
+    out,
   ).toStrictEqual({
     "1C": new Set(["1E"]),
     "1E": new Set(["1C", "1F"]),
@@ -185,54 +191,6 @@ test("mergeAdjancencyLists", () => {
   });
 });
 
-test("roblgorithm", () => {
-  // const programAdjacencyList = {
-  //   "+": ["1A", "2A"],
-  //   "1A": ["+"],
-  //   "1B": ["-"],
-  //   "-": ["1B", "2B"],
-  //   "2B": ["-", "2Z"],
-  //   "2A": ["+"],
-  //   "2Z": ["2B"],
-  // };
-  // const resistorAdjacencyList = {
-  //   "1A": ["1B"],
-  //   "1B": ["1A"],
-  //   "2A": ["2B"],
-  //   "2B": ["2A"],
-  // };
-  // const switchAdjacencyList = {};
-  // roblgorithm({
-  //   programAdjacencyList,
-  //   resistorAdjacencyList,
-  //   switchAdjacencyList,
-  // });
-
-  // two buttons in OR formation,
-  // when either one is pressed, light turns on, otherwise
-  // light stays off
-  const programAdjacencyList = programToAdjacencyList(`
-    1+/1Y
-    1X/1A
-    1B/1-
-    1Y/2Y
-    2X/1X
-  `);
-  const resistorAdjacencyList = getResistorAdjacencyList(programAdjacencyList);
-  const switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: true, 2: false },
-    relayStates: {},
-  });
-  // TODO FIXME write a test
-  // TODO FIXME write a test
-  // TODO FIXME write a test
-  roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
-  });
-});
-
 test("computeOutputStateFromPotentials", () => {
   expect(
     // not a circuit i.e. a short, but ok whatever
@@ -241,9 +199,9 @@ test("computeOutputStateFromPotentials", () => {
       "-": 0,
     }),
   ).toStrictEqual({
-    outputLightState: new Array(6).fill(false),
-    relayLightState: new Array(6).fill(false),
-    relayState: new Array(6).fill(false),
+    outputLightStates: new Array(6).fill(false),
+    relayLightStates: new Array(6).fill(false),
+    relayStates: new Array(6).fill(false),
   });
 
   expect(
@@ -255,9 +213,9 @@ test("computeOutputStateFromPotentials", () => {
       "-": 0,
     }),
   ).toStrictEqual({
-    outputLightState: [true, ...new Array(5).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    relayState: new Array(6).fill(false),
+    outputLightStates: [true, ...new Array(5).fill(false)],
+    relayLightStates: new Array(6).fill(false),
+    relayStates: new Array(6).fill(false),
   });
 
   expect(
@@ -271,152 +229,319 @@ test("computeOutputStateFromPotentials", () => {
       "-": 0,
     }),
   ).toStrictEqual({
-    outputLightState: [true, true, ...new Array(4).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    relayState: new Array(6).fill(false),
+    outputLightStates: [true, true, ...new Array(4).fill(false)],
+    relayLightStates: new Array(6).fill(false),
+    relayStates: new Array(6).fill(false),
   });
+});
 
-  // // --------------------------
-
-  // // TODO move this to a utility test func to not repeat??
-  // // TODO move this to a utility test func to not repeat??
-  // // TODO give it separate name i.e. use test/describe..?
-  // // to show up in the tests that we're testing this particular circuit?
-
+describe("roblgorithm", () => {
   // two buttons in OR formation,
   // when either one is pressed, light turns on, otherwise
   // light stays off
-  let programAdjacencyList = programToAdjacencyList(`
-    1+/1Y
-    1X/1A
-    1B/1-
-    1Y/2Y
-    2X/1X
-  `);
-  let resistorAdjacencyList = getResistorAdjacencyList(programAdjacencyList);
-  let switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: true, 2: false },
-    relayStates: {},
-  });
-  let potentials = roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
-  });
-
-  expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
-    outputLightState: [true, ...new Array(5).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    relayState: new Array(6).fill(false),
-  });
-
-  // -----------------------
-
-  // a circuit with a relay!! pdf p.17
-  programAdjacencyList = programToAdjacencyList(`
-    1+/1Y
-    1X/1E
-    1F/1-
-    1+/1H
-    1J/2A
-    2B/2-
-    1G/1A
-    1B/1-
-  `);
-  resistorAdjacencyList = getResistorAdjacencyList(programAdjacencyList);
-  switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: false },
-    relayStates: { 1: false },
-  });
-  potentials = roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
-  });
-  expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
-    // normally closed - 1H connects to 1J, light 2 turns on
-    outputLightState: [false, true, ...new Array(4).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    relayState: new Array(6).fill(false),
+  test("2 buttons in OR formation - button is not pressed - check potentials", () => {
+    const programAdjacencyList = programToAdjacencyList(`
+      1+/1Y
+      1X/1A
+      1B/1-
+      1Y/2Y
+      2X/1X
+    `);
+    const resistorAdjacencyList =
+      getResistorAdjacencyList(programAdjacencyList);
+    const switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+    const potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    expect(potentials).toStrictEqual({
+      "-": 0,
+      "1B": 0,
+    });
   });
 
-  // turn pushbutton 1 on, enabling the relay - step 1
-  // the relay will show as on, but the relay arms have not moved yet
-  switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: true },
-    relayStates: { 1: false },
-  });
-  potentials = roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
-  });
-  expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
-    outputLightState: [false, true, ...new Array(4).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    // the relay turns on!!
-    relayState: [true, ...new Array(5).fill(false)],
-  });
-
-  // CHEAT here but not just re-passing what we got from computeOutputStateFromPotentials
-  // but do change back state to boolean[] since it's otherwise confusing/hard
-  // to pass between output and input (i.e. we know that all 6 relays are off
-  // as output - we "can't" know that the original circuit only uses 1 circuit).
-  // the fear was that passing all false relay states would create
-  // too many unused connections..... but graph search can deal with searches
-  // across nodes that don't connect to anything...!!
-
-  // turn pushbutton 1 on, enabling the relay - step 2
-  switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: true },
-    relayStates: { 1: true },
-  });
-  potentials = roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
-  });
-  expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
-    // light 1 turns on, light 2 turns off
-    outputLightState: [true, false, ...new Array(4).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    // the relay is still on
-    relayState: [true, ...new Array(5).fill(false)],
+  test("2 buttons in OR formation - button is pressed - check potentials", () => {
+    const programAdjacencyList = programToAdjacencyList(`
+      1+/1Y
+      1X/1A
+      1B/1-
+      1Y/2Y
+      2X/1X
+    `);
+    const resistorAdjacencyList =
+      getResistorAdjacencyList(programAdjacencyList);
+    const switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: [true, ...new Array(5).fill(false)],
+      relayStates: new Array(6).fill(false),
+    });
+    const potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    expect(potentials).toStrictEqual({
+      "-": 0,
+      "1B": 0,
+      "1A": 1,
+      "1X": 1,
+      "1Y": 1,
+      "2Y": 1,
+      "2Z": 1,
+      "+": 1,
+      "2X": 1,
+    });
   });
 
-  // turn pushbutton 1 off, disabling the relay - step 1
-  switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: false },
-    relayStates: { 1: true },
+  test("2 buttons in OR formation - button is pressed - check output state", () => {
+    // two buttons in OR formation,
+    // when either one is pressed, light turns on, otherwise
+    // light stays off
+    let programAdjacencyList = programToAdjacencyList(`
+      1+/1Y
+      1X/1A
+      1B/1-
+      1Y/2Y
+      2X/1X
+    `);
+    let resistorAdjacencyList = getResistorAdjacencyList(programAdjacencyList);
+    let switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: [true, ...new Array(5).fill(false)],
+      relayStates: new Array(6).fill(false),
+    });
+    let potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+
+    expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
+      outputLightStates: [true, ...new Array(5).fill(false)],
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
   });
-  potentials = roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
-  });
-  expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
-    // light 1 is still on, light 2 is still off
-    outputLightState: [true, false, ...new Array(4).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    // the relay turns off
-    relayState: new Array(6).fill(false),
+});
+
+describe("roblgorithm - circuits", () => {
+  test("a circuit with a relay!! pdf p.17", () => {
+    let programAdjacencyList = programToAdjacencyList(`
+      1+/1Y
+      1X/1E
+      1F/1-
+      1+/1H
+      1J/2A
+      2B/2-
+      1G/1A
+      1B/1-
+    `);
+    let resistorAdjacencyList = getResistorAdjacencyList(programAdjacencyList);
+    let switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+    let potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
+      // normally closed - 1H connects to 1J, light 2 turns on
+      outputLightStates: [false, true, ...new Array(4).fill(false)],
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+
+    // turn pushbutton 1 on, enabling the relay - step 1
+    // the relay will show as on, but the relay arms have not moved yet
+    switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: [true, ...new Array(5).fill(false)],
+      relayStates: new Array(6).fill(false),
+    });
+    potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+
+    let computedState = computeOutputStateFromPotentials(potentials);
+    expect(computedState).toStrictEqual({
+      outputLightStates: [false, true, ...new Array(4).fill(false)],
+      relayLightStates: new Array(6).fill(false),
+      // the relay turns on!!!!!!
+      relayStates: [true, ...new Array(5).fill(false)],
+    });
+
+    // turn pushbutton 1 on, enabling the relay - step 2
+    switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: [true, ...new Array(5).fill(false)],
+      relayStates: computedState.relayStates,
+    });
+    potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    computedState = computeOutputStateFromPotentials(potentials);
+    expect(computedState).toStrictEqual({
+      // light 1 turns on, light 2 turns off
+      outputLightStates: [true, false, ...new Array(4).fill(false)],
+      relayLightStates: new Array(6).fill(false),
+      // the relay is still on
+      relayStates: [true, ...new Array(5).fill(false)],
+    });
+
+    // turn pushbutton 1 off, disabling the relay - step 1
+    switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: new Array(6).fill(false),
+      relayStates: computedState.relayStates,
+    });
+    potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    computedState = computeOutputStateFromPotentials(potentials);
+    expect(computedState).toStrictEqual({
+      // light 1 is still on, light 2 is still off
+      outputLightStates: [true, false, ...new Array(4).fill(false)],
+      relayLightStates: new Array(6).fill(false),
+      // the relay turns off
+      relayStates: new Array(6).fill(false),
+    });
+
+    // turn pushbutton 1 off, disabling the relay - step 2
+    switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: new Array(6).fill(false),
+      relayStates: computedState.relayStates,
+    });
+    potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
+      // light 1 turns off, light 2 turns on
+      outputLightStates: [false, true, ...new Array(4).fill(false)],
+      relayLightStates: new Array(6).fill(false),
+      // the relay stays off
+      relayStates: new Array(6).fill(false),
+    });
   });
 
-  // turn pushbutton 1 off, disabling the relay - step 2
-  switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
-    buttonStates: { 1: false },
-    relayStates: { 1: false },
+  test("a relay controls another, pdf p.18", () => {
+    let programAdjacencyList = programToAdjacencyList(`
+      1+/1Y
+      1X/1C
+      1F/1-
+      1+/1H
+      1G/2C
+      2F/2-
+      2+/2H
+      2G/2A
+      2B/2-
+    `);
+    let resistorAdjacencyList = getResistorAdjacencyList(programAdjacencyList);
+    let switchAdjacencyList = getButtonSwitchRelayAdjacencyList({
+      buttonStates: [true, ...new Array(5).fill(false)],
+      relayStates: new Array(6).fill(false),
+    });
+    let potentials = roblgorithm({
+      programAdjacencyList,
+      resistorAdjacencyList,
+      switchAdjacencyList,
+    });
+    expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: [true, ...new Array(5).fill(false)],
+      relayStates: [true, ...new Array(5).fill(false)],
+    });
   });
-  potentials = roblgorithm({
-    programAdjacencyList,
-    resistorAdjacencyList,
-    switchAdjacencyList,
+});
+
+describe("Minivac class", () => {
+  test("basic class usage works", () => {
+    const m = new MinivacSimulator(`
+      1+/1Y
+      1X/1A
+      1-/1B
+    `);
+    // no buttons pressed, lights stay off
+    expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+      changedRelays: [],
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+
+    // press a button, see light turn on
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [],
+        outputLightStates: [true, ...new Array(5).fill(false)],
+        relayLightStates: new Array(6).fill(false),
+        relayStates: new Array(6).fill(false),
+      },
+    );
   });
-  expect(computeOutputStateFromPotentials(potentials)).toStrictEqual({
-    // light 1 turns off, light 2 turns on
-    outputLightState: [false, true, ...new Array(4).fill(false)],
-    relayLightState: new Array(6).fill(false),
-    // the relay stays off
-    relayState: new Array(6).fill(false),
+
+  test("one relay controls another, pdf p.18", () => {
+    const m = new MinivacSimulator(`
+      1+/1Y
+      1X/1C
+      1F/1-
+      1+/1H
+      1G/2C
+      2F/2-
+      2+/2H
+      2G/2A
+      2B/2-
+    `);
+    // no buttons pressed, lights stay off
+    expect(m.simulationStep(new Array(6).fill(false))).toStrictEqual({
+      changedRelays: [],
+      outputLightStates: new Array(6).fill(false),
+      relayLightStates: new Array(6).fill(false),
+      relayStates: new Array(6).fill(false),
+    });
+    // press button, relay light 1 and coil 1 turn on
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [0],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: [true, ...new Array(5).fill(false)],
+        relayStates: [true, ...new Array(5).fill(false)],
+      },
+    );
+    // another simulation step -> light 2 and coil 2 turn on
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [1],
+        outputLightStates: new Array(6).fill(false),
+        relayLightStates: [true, true, ...new Array(4).fill(false)],
+        relayStates: [true, true, ...new Array(4).fill(false)],
+      },
+    );
+    // another simulation step -> output light 2 turns on
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [],
+        outputLightStates: [false, true, ...new Array(4).fill(false)],
+        relayLightStates: [true, true, ...new Array(4).fill(false)],
+        relayStates: [true, true, ...new Array(4).fill(false)],
+      },
+    );
+    // another simulation step -- no change
+    expect(m.simulationStep([true, ...new Array(5).fill(false)])).toStrictEqual(
+      {
+        changedRelays: [],
+        outputLightStates: [false, true, ...new Array(4).fill(false)],
+        relayLightStates: [true, true, ...new Array(4).fill(false)],
+        relayStates: [true, true, ...new Array(4).fill(false)],
+      },
+    );
   });
 });
