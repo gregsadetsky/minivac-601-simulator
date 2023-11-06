@@ -8,6 +8,7 @@ import type {
 } from "./simulator.t";
 
 const LOGGING = false;
+// @ts-ignore -- log is used sporadically, so don't warn about it when it's not used
 function log(...args: any[]) {
   if (LOGGING) {
     console.log(...args);
